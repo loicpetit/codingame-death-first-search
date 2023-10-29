@@ -46,6 +46,30 @@ func (node *Node) String() string {
 	return sb.String()
 }
 
+func (node *Node) removeLink(linkedNode *Node) {
+	if node == nil || linkedNode == nil {
+		return
+	}
+	linkedNodeIndex := -1
+	for i, n := range node.links {
+		if n.index == linkedNode.index {
+			linkedNodeIndex = i
+			break
+		}
+	}
+	if linkedNodeIndex == -1 {
+		return
+	}
+	if len(node.links) == 1 {
+		node.links = []*Node{}
+		return
+	}
+	tmp := node.links[0]
+	node.links[0] = node.links[linkedNodeIndex]
+	node.links[linkedNodeIndex] = tmp
+	node.links = node.links[1:]
+}
+
 type Link struct {
 	node1 *Node
 	node2 *Node
@@ -100,6 +124,33 @@ func (gameMap *GameMap) SetBobnetAgentIndex(index int) {
 	}
 }
 
+func (gameMap *GameMap) removeLink(link *Link) {
+	if gameMap == nil || link == nil {
+		return
+	}
+	link.node1.removeLink(link.node2)
+	link.node2.removeLink(link.node1)
+	linkIndex := -1
+	for i, l := range gameMap.links {
+		if (l.node1.index == link.node1.index || l.node1.index == link.node2.index) &&
+			(l.node2.index == link.node1.index || l.node2.index == link.node2.index) {
+			linkIndex = i
+			break
+		}
+	}
+	if linkIndex == -1 {
+		return
+	}
+	if len(gameMap.links) == 1 {
+		gameMap.links = []*Link{}
+		return
+	}
+	tmp := gameMap.links[0]
+	gameMap.links[0] = gameMap.links[linkIndex]
+	gameMap.links[linkIndex] = tmp
+	gameMap.links = gameMap.links[1:]
+}
+
 func buildMap() *GameMap {
 	var nbNodes, nbLinks, nbExits int
 	fmt.Scan(&nbNodes, &nbLinks, &nbExits)
@@ -133,9 +184,45 @@ func buildMap() *GameMap {
 /*** SHORTEST PATH ***/
 
 func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
-	//parentIndex := make([]int, len(gameMap.nodes))
-	path := make([]int, 0)
-	path = append(path, endIndex)
+	// debug("Get shortest path between", startIndex, "and", endIndex)
+	if startIndex == endIndex {
+		return []int{}
+	}
+	nbNodes := len(gameMap.nodes)
+	parentIndex := make([]int, nbNodes)
+	for i, _ := range parentIndex {
+		parentIndex[i] = -1
+	}
+	var queue []int
+	queue = append(queue, startIndex)
+	for {
+		currentIndex := queue[0]
+		// debug("current index", currentIndex)
+		queue = queue[1:]
+		currentNode := gameMap.nodes[currentIndex]
+		for _, linkedNode := range currentNode.links {
+			if linkedNode.index != startIndex && parentIndex[linkedNode.index] == -1 {
+				parentIndex[linkedNode.index] = currentIndex
+				queue = append(queue, linkedNode.index)
+			}
+		}
+		if len(queue) == 0 || parentIndex[endIndex] != -1 {
+			break
+		}
+	}
+	// debug("Parents", parentIndex)
+	if parentIndex[endIndex] == -1 {
+		return []int{}
+	}
+	// debug("Create path")
+	var path []int
+	currentParentIndex := endIndex
+	for parentIndex[currentParentIndex] != -1 {
+		// debug("prepend", currentParentIndex)
+		path = append([]int{currentParentIndex}, path...)
+		currentParentIndex = parentIndex[currentParentIndex]
+	}
+	path = append([]int{startIndex}, path...)
 	return path
 }
 
@@ -149,6 +236,7 @@ func getBobnetPath(gameMap *GameMap) ([]int, error) {
 	}
 	nbExits := len(gameMap.exits)
 	pathChannel := make(chan []int, nbExits)
+	debug(nbExits, "paths to compute")
 	for i := 0; i < nbExits; i++ {
 		go getBobnetPathToExit(pathChannel, gameMap, gameMap.exits[i].index)
 	}
@@ -162,24 +250,74 @@ func getBobnetPath(gameMap *GameMap) ([]int, error) {
 	return path, nil
 }
 
+/*** LINK TO CUT ***/
+
+func getLinkToCutFromPath(links []*Link, path []int) (*Link, error) {
+	if path == nil || len(path) < 2 {
+		return nil, errors.New("cannot get a link to cut, the path has less than 2 indexes")
+	}
+	nbLinks := len(links)
+	currentPath := path
+	for len(currentPath) > 1 {
+		index1 := currentPath[0]
+		index2 := currentPath[1]
+		for i := 0; i < nbLinks; i++ {
+			link := links[i]
+			if (link.node1.index == index1 || link.node1.index == index2) &&
+				(link.node2.index == index1 || link.node2.index == index2) {
+				return link, nil
+			}
+		}
+		currentPath = currentPath[1:]
+	}
+	return nil, errors.New("cannot get a link to cut from the path")
+}
+
+func getLinkToCutFromNode(node *Node) (*Link, error) {
+	if node == nil || len(node.links) == 0 {
+		return nil, errors.New("cannot get a link to cut, the node has no links")
+	}
+	return &Link{node1: node, node2: node.links[0]}, nil
+}
+
+/*** OUTPUTS ***/
+
+func cutLink(gameMap *GameMap, link *Link) {
+	if gameMap == nil || link == nil {
+		return
+	}
+	gameMap.removeLink(link)
+	fmt.Println(fmt.Sprintf("%d %d", link.node1.index, link.node2.index))
+}
+
 /*** MAIN ***/
 
 func main() {
 	gameMap := buildMap()
+	round := 0
 	debug("Game map:", gameMap)
 	for {
+		round++
 		var bobnetAgentIndex int
 		fmt.Scan(&bobnetAgentIndex)
 		gameMap.SetBobnetAgentIndex(bobnetAgentIndex)
-		debug("Round:", gameMap.nodes)
+		debug("Round", round, ":", gameMap.nodes)
 		bobnetPath, bobnetPathError := getBobnetPath(gameMap)
 		if bobnetPathError != nil {
 			debug("Error getting bobnet shortest path:", bobnetPathError)
 			continue
 		}
 		debug("Bobnet path", bobnetPath)
-
-		// Example: 0 1 are the indices of the nodes you wish to sever the link between
-		fmt.Println("0 1")
+		linkToCut, linkToCutError := getLinkToCutFromPath(gameMap.links, bobnetPath)
+		if linkToCutError != nil {
+			debug("Error getting link to cut:", linkToCutError)
+			debug("Get a link from bobnet agent node")
+			linkToCut, linkToCutError = getLinkToCutFromNode(gameMap.nodes[gameMap.bobnetAgentIndex])
+			if linkToCutError != nil {
+				debug("Error getting link to cut:", linkToCutError)
+				continue
+			}
+		}
+		cutLink(gameMap, linkToCut)
 	}
 }
