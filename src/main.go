@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -129,6 +130,38 @@ func buildMap() *GameMap {
 	return &GameMap{bobnetAgentIndex: -1, exits: exits, links: links, nodes: nodes}
 }
 
+/*** SHORTEST PATH ***/
+
+func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
+	//parentIndex := make([]int, len(gameMap.nodes))
+	path := make([]int, 0)
+	path = append(path, endIndex)
+	return path
+}
+
+func getBobnetPathToExit(channel chan []int, gameMap *GameMap, exitIndex int) {
+	channel <- getShortestPath(gameMap, gameMap.bobnetAgentIndex, exitIndex)
+}
+
+func getBobnetPath(gameMap *GameMap) ([]int, error) {
+	if gameMap == nil {
+		return nil, errors.New("game map is missing")
+	}
+	nbExits := len(gameMap.exits)
+	pathChannel := make(chan []int, nbExits)
+	for i := 0; i < nbExits; i++ {
+		go getBobnetPathToExit(pathChannel, gameMap, gameMap.exits[i].index)
+	}
+	var path []int
+	for i := 0; i < nbExits; i++ {
+		pathToExit := <-pathChannel
+		if path == nil || len(pathToExit) < len(path) {
+			path = pathToExit
+		}
+	}
+	return path, nil
+}
+
 /*** MAIN ***/
 
 func main() {
@@ -139,6 +172,12 @@ func main() {
 		fmt.Scan(&bobnetAgentIndex)
 		gameMap.SetBobnetAgentIndex(bobnetAgentIndex)
 		debug("Round:", gameMap.nodes)
+		bobnetPath, bobnetPathError := getBobnetPath(gameMap)
+		if bobnetPathError != nil {
+			debug("Error getting bobnet shortest path:", bobnetPathError)
+			continue
+		}
+		debug("Bobnet path", bobnetPath)
 
 		// Example: 0 1 are the indices of the nodes you wish to sever the link between
 		fmt.Println("0 1")
