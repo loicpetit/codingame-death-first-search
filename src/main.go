@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 /*** UTIL ***/
@@ -297,10 +298,13 @@ func cutLink(gameMap *GameMap, link *Link) {
 /*** MAIN ***/
 
 func main() {
+	start := time.Now()
 	gameMap := buildMap()
 	round := 0
 	debug("Game map:", gameMap)
+	debug("Init time:", time.Since(start))
 	for {
+		start = time.Now()
 		round++
 		var bobnetAgentIndex int
 		fmt.Scan(&bobnetAgentIndex)
@@ -323,5 +327,6 @@ func main() {
 			}
 		}
 		cutLink(gameMap, linkToCut)
+		debug("Round time:", time.Since(start))
 	}
 }
