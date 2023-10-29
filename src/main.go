@@ -243,7 +243,11 @@ func getBobnetPath(gameMap *GameMap) ([]int, error) {
 	var path []int
 	for i := 0; i < nbExits; i++ {
 		pathToExit := <-pathChannel
-		if path == nil || len(pathToExit) < len(path) {
+		pathToExitLength := len(pathToExit)
+		if pathToExitLength == 0 {
+			continue
+		}
+		if path == nil || pathToExitLength < len(path) {
 			path = pathToExit
 		}
 	}
