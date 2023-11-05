@@ -84,6 +84,18 @@ func (node *Node) getNbLinkedExits() int {
 	return nbLinkedExits
 }
 
+func (node *Node) isLinkedToAnExit() bool {
+	if node == nil {
+		return false
+	}
+	for _, linkedNode := range node.links {
+		if linkedNode.isExit {
+			return true
+		}
+	}
+	return false
+}
+
 type Link struct {
 	node1 *Node
 	node2 *Node
@@ -252,10 +264,14 @@ func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
 }
 
 func evaluateRisk(gameMap *GameMap, indexes []int) int {
+	if gameMap == nil || len(indexes) < 2 {
+		return 0
+	}
 	lengthRisk := evaluateLengthRisk(gameMap, indexes)
 	multiExistsNodeRisk := evaluateMultiExitsNodeRisk(gameMap, indexes)
 	exitNextTurnRisk := evaluateExitNextTurnRisk(indexes)
 	tunnelRisk := evaluateTunnelRisk(gameMap, indexes)
+	debug(lengthRisk, multiExistsNodeRisk, exitNextTurnRisk, tunnelRisk)
 	return lengthRisk + multiExistsNodeRisk + exitNextTurnRisk + tunnelRisk
 }
 
@@ -267,7 +283,7 @@ func evaluateLengthRisk(gameMap *GameMap, indexes []int) int {
 }
 
 func evaluateMultiExitsNodeRisk(gameMap *GameMap, indexes []int) int {
-	if gameMap == nil || len(indexes) == 0 {
+	if gameMap == nil || len(indexes) < 2 {
 		return 0
 	}
 	maxNbExits := 0
@@ -295,24 +311,25 @@ func evaluateExitNextTurnRisk(indexes []int) int {
 }
 
 func evaluateTunnelRisk(gameMap *GameMap, indexes []int) int {
-	if gameMap == nil || len(indexes) == 0 {
+	if gameMap == nil || len(indexes) < 2 {
 		return 0
 	}
 	nbNodes := len(gameMap.nodes)
 	nbIndexes := len(indexes)
-	nbConsecutiveExits := 0
+	nbConsecutiveLinkedExits := 0
 	for i := nbIndexes - 1; i >= 0; i-- {
 		nodeIndex := indexes[i]
 		if nodeIndex < 0 || nodeIndex >= nbNodes {
 			continue
 		}
 		node := gameMap.nodes[nodeIndex]
-		if !node.isExit {
-			break
+		if node.isExit || node.isLinkedToAnExit() {
+			nbConsecutiveLinkedExits++
+			continue
 		}
-		nbConsecutiveExits++
+		break
 	}
-	return nbConsecutiveExits
+	return nbConsecutiveLinkedExits
 }
 
 func getBobnetPathToExit(channel chan *Path, gameMap *GameMap, exitIndex int) {
@@ -334,10 +351,10 @@ func getBobnetPath(gameMap *GameMap) (*Path, error) {
 	var path *Path
 	for i := 0; i < nbExits; i++ {
 		pathToExit := <-pathChannel
-		debug("Possible path:", pathToExit)
 		if pathToExit == nil || len(pathToExit.indexes) == 0 {
 			continue
 		}
+		debug("Possible path:", pathToExit)
 		if path == nil || pathToExit.risk > path.risk {
 			path = pathToExit
 		}
