@@ -71,6 +71,19 @@ func (node *Node) removeLink(linkedNode *Node) {
 	node.links = node.links[1:]
 }
 
+func (node *Node) getnbLinkedExits() int {
+	if node == nil {
+		return 0
+	}
+	nbLinkedExits := 0
+	for _, linkedNode := range node.links {
+		if linkedNode.isExit {
+			nbLinkedExits++
+		}
+	}
+	return nbLinkedExits
+}
+
 type Link struct {
 	node1 *Node
 	node2 *Node
@@ -182,7 +195,11 @@ func buildMap() *GameMap {
 	return &GameMap{bobnetAgentIndex: -1, exits: exits, links: links, nodes: nodes}
 }
 
-/*** SHORTEST PATH ***/
+/*** PATHS ***/
+type Path struct {
+	indexes []int
+	risk    int
+}
 
 func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
 	// debug("Get shortest path between", startIndex, "and", endIndex)
@@ -215,40 +232,48 @@ func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
 	if parentIndex[endIndex] == -1 {
 		return []int{}
 	}
-	// debug("Create path")
-	var path []int
+	// debug("Create indexes")
+	var indexes []int
 	currentParentIndex := endIndex
 	for parentIndex[currentParentIndex] != -1 {
 		// debug("prepend", currentParentIndex)
-		path = append([]int{currentParentIndex}, path...)
+		indexes = append([]int{currentParentIndex}, indexes...)
 		currentParentIndex = parentIndex[currentParentIndex]
 	}
-	path = append([]int{startIndex}, path...)
-	return path
+	indexes = append([]int{startIndex}, indexes...)
+	return indexes
 }
 
-func getBobnetPathToExit(channel chan []int, gameMap *GameMap, exitIndex int) {
-	channel <- getShortestPath(gameMap, gameMap.bobnetAgentIndex, exitIndex)
+func evaluateRisk(gameMap *GameMap, indexes []int) int {
+	if gameMap == nil {
+		return 0
+	}
+	return len(gameMap.nodes) - len(indexes)
 }
 
-func getBobnetPath(gameMap *GameMap) ([]int, error) {
+func getBobnetPathToExit(channel chan *Path, gameMap *GameMap, exitIndex int) {
+	indexes := getShortestPath(gameMap, gameMap.bobnetAgentIndex, exitIndex)
+	risk := evaluateRisk(gameMap, indexes)
+	channel <- &Path{indexes: indexes, risk: risk}
+}
+
+func getBobnetPath(gameMap *GameMap) (*Path, error) {
 	if gameMap == nil {
 		return nil, errors.New("game map is missing")
 	}
 	nbExits := len(gameMap.exits)
-	pathChannel := make(chan []int, nbExits)
+	pathChannel := make(chan *Path, nbExits)
 	debug(nbExits, "paths to compute")
 	for i := 0; i < nbExits; i++ {
 		go getBobnetPathToExit(pathChannel, gameMap, gameMap.exits[i].index)
 	}
-	var path []int
+	var path *Path
 	for i := 0; i < nbExits; i++ {
 		pathToExit := <-pathChannel
-		pathToExitLength := len(pathToExit)
-		if pathToExitLength == 0 {
+		if pathToExit == nil || len(pathToExit.indexes) == 0 {
 			continue
 		}
-		if path == nil || pathToExitLength < len(path) {
+		if path == nil || pathToExit.risk > path.risk {
 			path = pathToExit
 		}
 	}
@@ -257,16 +282,16 @@ func getBobnetPath(gameMap *GameMap) ([]int, error) {
 
 /*** LINK TO CUT ***/
 
-func getLinkToCutFromPath(links []*Link, path []int) (*Link, error) {
-	if path == nil || len(path) < 2 {
+func getLinkToCutFromPath(links []*Link, path *Path) (*Link, error) {
+	if path == nil || len(path.indexes) < 2 {
 		return nil, errors.New("cannot get a link to cut, the path has less than 2 indexes")
 	}
 	nbLinks := len(links)
-	currentPath := path
+	currentPath := path.indexes
 	pathLenght := len(currentPath)
-	for len(currentPath) > 1 {
-		index1 := currentPath[pathLenght-1]
-		index2 := currentPath[pathLenght-2]
+	for pathLenght > 1 {
+		index1 := path.indexes[pathLenght-1]
+		index2 := path.indexes[pathLenght-2]
 		for i := 0; i < nbLinks; i++ {
 			link := links[i]
 			if (link.node1.index == index1 || link.node1.index == index2) &&
@@ -274,7 +299,7 @@ func getLinkToCutFromPath(links []*Link, path []int) (*Link, error) {
 				return link, nil
 			}
 		}
-		currentPath = currentPath[:pathLenght-2]
+		currentPath = path.indexes[:pathLenght-2]
 		pathLenght = len(currentPath)
 	}
 	return nil, errors.New("cannot get a link to cut from the path")
