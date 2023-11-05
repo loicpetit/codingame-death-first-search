@@ -263,9 +263,10 @@ func getLinkToCutFromPath(links []*Link, path []int) (*Link, error) {
 	}
 	nbLinks := len(links)
 	currentPath := path
+	pathLenght := len(currentPath)
 	for len(currentPath) > 1 {
-		index1 := currentPath[0]
-		index2 := currentPath[1]
+		index1 := currentPath[pathLenght-1]
+		index2 := currentPath[pathLenght-2]
 		for i := 0; i < nbLinks; i++ {
 			link := links[i]
 			if (link.node1.index == index1 || link.node1.index == index2) &&
@@ -273,7 +274,8 @@ func getLinkToCutFromPath(links []*Link, path []int) (*Link, error) {
 				return link, nil
 			}
 		}
-		currentPath = currentPath[1:]
+		currentPath = currentPath[:pathLenght-2]
+		pathLenght = len(currentPath)
 	}
 	return nil, errors.New("cannot get a link to cut from the path")
 }
