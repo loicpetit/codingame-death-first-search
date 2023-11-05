@@ -71,7 +71,7 @@ func (node *Node) removeLink(linkedNode *Node) {
 	node.links = node.links[1:]
 }
 
-func (node *Node) getnbLinkedExits() int {
+func (node *Node) getNbLinkedExits() int {
 	if node == nil {
 		return 0
 	}
@@ -201,6 +201,13 @@ type Path struct {
 	risk    int
 }
 
+func (path *Path) String() string {
+	if path == nil {
+		return ""
+	}
+	return fmt.Sprintf("{indexes: %v, risk: %v}", path.indexes, path.risk)
+}
+
 func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
 	// debug("Get shortest path between", startIndex, "and", endIndex)
 	if startIndex == endIndex {
@@ -245,10 +252,45 @@ func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
 }
 
 func evaluateRisk(gameMap *GameMap, indexes []int) int {
+	lengthRisk := evaluateLengthRisk(gameMap, indexes)
+	multiExistsNodeRisk := evaluateMultiExitsNodeRisk(gameMap, indexes)
+	exitNextTurnRisk := evaluateExitNextTurnRisk(indexes)
+	return lengthRisk + multiExistsNodeRisk + exitNextTurnRisk
+}
+
+func evaluateLengthRisk(gameMap *GameMap, indexes []int) int {
 	if gameMap == nil {
 		return 0
 	}
 	return len(gameMap.nodes) - len(indexes)
+}
+
+func evaluateMultiExitsNodeRisk(gameMap *GameMap, indexes []int) int {
+	if gameMap == nil || len(indexes) == 0 {
+		return 0
+	}
+	maxNbExits := 0
+	nbNodes := len(gameMap.nodes)
+	nbIndexes := len(indexes)
+	for i := 0; i < nbIndexes; i++ {
+		nodeIndex := indexes[i]
+		if nodeIndex < 0 || nodeIndex >= nbNodes {
+			continue
+		}
+		node := gameMap.nodes[nodeIndex]
+		nbLinkedExits := node.getNbLinkedExits()
+		if nbLinkedExits > maxNbExits {
+			maxNbExits = nbLinkedExits
+		}
+	}
+	return maxNbExits * 1000
+}
+
+func evaluateExitNextTurnRisk(indexes []int) int {
+	if len(indexes) == 2 {
+		return 10000
+	}
+	return 0
 }
 
 func getBobnetPathToExit(channel chan *Path, gameMap *GameMap, exitIndex int) {
@@ -270,6 +312,7 @@ func getBobnetPath(gameMap *GameMap) (*Path, error) {
 	var path *Path
 	for i := 0; i < nbExits; i++ {
 		pathToExit := <-pathChannel
+		debug("Possible path:", pathToExit)
 		if pathToExit == nil || len(pathToExit.indexes) == 0 {
 			continue
 		}
