@@ -223,7 +223,7 @@ func (path *Path) String() string {
 func getShortestPath(gameMap *GameMap, startIndex int, endIndex int) []int {
 	// debug("Get shortest path between", startIndex, "and", endIndex)
 	if startIndex == endIndex {
-		return []int{}
+		return []int{startIndex}
 	}
 	nbNodes := len(gameMap.nodes)
 	parentIndex := make([]int, nbNodes)
@@ -332,24 +332,42 @@ func evaluateTunnelRisk(gameMap *GameMap, indexes []int) int {
 	return nbConsecutiveLinkedExits
 }
 
-func getBobnetPathToExit(channel chan *Path, gameMap *GameMap, exitIndex int) {
-	indexes := getShortestPath(gameMap, gameMap.bobnetAgentIndex, exitIndex)
+func getPathToExit(channel chan *Path, gameMap *GameMap, exitLink *Link) {
+	var indexes []int
+	if exitLink.node1.isExit {
+		indexes = append(getShortestPath(gameMap, gameMap.bobnetAgentIndex, exitLink.node2.index), exitLink.node1.index)
+	} else {
+		indexes = append(getShortestPath(gameMap, gameMap.bobnetAgentIndex, exitLink.node1.index), exitLink.node2.index)
+	}
 	risk := evaluateRisk(gameMap, indexes)
 	channel <- &Path{indexes: indexes, risk: risk}
+}
+
+func getAllExitLinks(gameMap *GameMap) (links []*Link) {
+	if gameMap == nil || len(gameMap.links) == 0 {
+		return
+	}
+	for _, link := range gameMap.links {
+		if link.node1.isExit || link.node2.isExit {
+			links = append(links, link)
+		}
+	}
+	return
 }
 
 func getBobnetPath(gameMap *GameMap) (*Path, error) {
 	if gameMap == nil {
 		return nil, errors.New("game map is missing")
 	}
-	nbExits := len(gameMap.exits)
-	pathChannel := make(chan *Path, nbExits)
-	debug(nbExits, "paths to compute")
-	for i := 0; i < nbExits; i++ {
-		go getBobnetPathToExit(pathChannel, gameMap, gameMap.exits[i].index)
+	exitLinks := getAllExitLinks(gameMap)
+	nbExitLinks := len(exitLinks)
+	pathChannel := make(chan *Path, nbExitLinks)
+	debug(nbExitLinks, "paths to compute")
+	for i := 0; i < nbExitLinks; i++ {
+		go getPathToExit(pathChannel, gameMap, exitLinks[i])
 	}
 	var path *Path
-	for i := 0; i < nbExits; i++ {
+	for i := 0; i < nbExitLinks; i++ {
 		pathToExit := <-pathChannel
 		if pathToExit == nil || len(pathToExit.indexes) == 0 {
 			continue
