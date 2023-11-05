@@ -255,7 +255,8 @@ func evaluateRisk(gameMap *GameMap, indexes []int) int {
 	lengthRisk := evaluateLengthRisk(gameMap, indexes)
 	multiExistsNodeRisk := evaluateMultiExitsNodeRisk(gameMap, indexes)
 	exitNextTurnRisk := evaluateExitNextTurnRisk(indexes)
-	return lengthRisk + multiExistsNodeRisk + exitNextTurnRisk
+	tunnelRisk := evaluateTunnelRisk(gameMap, indexes)
+	return lengthRisk + multiExistsNodeRisk + exitNextTurnRisk + tunnelRisk
 }
 
 func evaluateLengthRisk(gameMap *GameMap, indexes []int) int {
@@ -291,6 +292,27 @@ func evaluateExitNextTurnRisk(indexes []int) int {
 		return 10000
 	}
 	return 0
+}
+
+func evaluateTunnelRisk(gameMap *GameMap, indexes []int) int {
+	if gameMap == nil || len(indexes) == 0 {
+		return 0
+	}
+	nbNodes := len(gameMap.nodes)
+	nbIndexes := len(indexes)
+	nbConsecutiveExits := 0
+	for i := nbIndexes - 1; i >= 0; i-- {
+		nodeIndex := indexes[i]
+		if nodeIndex < 0 || nodeIndex >= nbNodes {
+			continue
+		}
+		node := gameMap.nodes[nodeIndex]
+		if !node.isExit {
+			break
+		}
+		nbConsecutiveExits++
+	}
+	return nbConsecutiveExits
 }
 
 func getBobnetPathToExit(channel chan *Path, gameMap *GameMap, exitIndex int) {
