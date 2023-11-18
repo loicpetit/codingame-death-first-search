@@ -4,8 +4,7 @@ import (
 	"fmt"
 )
 
-/*** MAIN ***/
-
+// Initialize the game loop and play the game
 func main() {
 	timer := &Timer{}
 	timer.startInit()
